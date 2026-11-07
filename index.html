@@ -1,0 +1,574 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simple Code Editor 2.0</title>
+
+<style>
+* { box-sizing: border-box; }
+
+:root {
+  --bg: #17191f;
+  --panel: #222630;
+  --text: #edf0f7;
+  --border: #383e4b;
+  --muted: #8993a5;
+  --accent: #568cff;
+  --editor: #171b24;
+}
+
+body.light {
+  --bg: #f1f3f7;
+  --panel: #ffffff;
+  --text: #202735;
+  --border: #dce1e9;
+  --muted: #778196;
+  --editor: #ffffff;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+
+h3 { margin: 0; font-size: 17px; }
+
+button, select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 11px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.toolbar {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.filebar {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#fileSelect { min-width: 130px; }
+
+.workspace { padding: 10px; }
+
+.editor-title {
+  font-size: 13px;
+  margin-bottom: 9px;
+  color: var(--muted);
+}
+
+.editor-box {
+  display: flex;
+  height: 48vh;
+  min-height: 230px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+#lineNumbers {
+  width: 43px;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 12px 8px;
+  color: var(--muted);
+  text-align: right;
+  font: 13px/1.65 monospace;
+  white-space: pre;
+  user-select: none;
+  border-right: 1px solid var(--border);
+}
+
+.code-area {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#highlight, #editor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  font: 13px/1.65 Consolas, monospace;
+  white-space: pre;
+  tab-size: 2;
+  overflow: auto;
+}
+
+#highlight {
+  pointer-events: none;
+  color: var(--text);
+}
+
+#editor {
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+  -webkit-text-fill-color: transparent;
+}
+
+#editor::selection {
+  background: #568cff66;
+}
+
+.comment { color: #8993a5; }
+.string { color: #8bd49c; }
+.keyword { color: #c792ea; }
+.tag { color: #e69b74; }
+.attribute { color: #e8c77c; }
+.number { color: #f0a66b; }
+.property { color: #80b8f0; }
+.selector { color: #e6a6d8; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+#preview {
+  display: block;
+  width: 100%;
+  height: 36vh;
+  min-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+.status {
+  color: #23b878;
+  font-size: 12px;
+  padding: 7px 0;
+}
+
+@media(min-width: 850px) {
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+
+  .editor-box { height: 70vh; }
+  #preview { height: 70vh; }
+}
+
+@media(max-width: 400px) {
+  header h3 { font-size: 14px; }
+  button { padding: 9px; }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h3>⌨ Simple Editor 2.0</h3>
+  <button onclick="toggleTheme()" id="themeBtn">
+    ☀ ライト
+  </button>
+</header>
+
+<div class="toolbar">
+  <button class="primary" onclick="runCode()">▶ 実行</button>
+  <button onclick="saveProject()">💾 保存</button>
+  <button onclick="downloadFile()">↓ 書き出し</button>
+  <button onclick="document.getElementById('openFile').click()">📂 開く</button>
+  <input type="file" id="openFile" hidden>
+</div>
+
+<div class="filebar">
+  <select id="fileSelect" onchange="switchFile(this.value)">
+  </select>
+  <button onclick="newFile()">＋ 新規</button>
+  <button onclick="deleteFile()">削除</button>
+</div>
+
+<div class="workspace">
+
+<section>
+  <div class="editor-title" id="editorTitle">
+    コードエディタ
+  </div>
+
+  <div class="editor-box">
+    <div id="lineNumbers">1</div>
+    <div class="code-area">
+      <pre id="highlight" aria-hidden="true"></pre>
+      <textarea id="editor"
+        spellcheck="false"
+        autocapitalize="off"
+        autocomplete="off"
+        autocorrect="off"
+        wrap="off"
+        aria-label="コード入力"></textarea>
+    </div>
+  </div>
+
+  <div class="status" id="status">● 準備完了</div>
+</section>
+
+<section>
+  <div class="editor-title">プレビュー画面</div>
+  <iframe id="preview"
+    title="プレビュー"
+    sandbox="allow-scripts"></iframe>
+</section>
+
+</div>
+
+<script>
+const editor = document.getElementById("editor");
+const highlight = document.getElementById("highlight");
+const lineNumbers = document.getElementById("lineNumbers");
+const statusBox = document.getElementById("status");
+const preview = document.getElementById("preview");
+const fileSelect = document.getElementById("fileSelect");
+
+let files = {
+  "index.html": `<h1>Hello World!</h1>
+<p>Simple Editor 2.0へようこそ！</p>
+<button onclick="alert('こんにちは！')">クリック</button>`,
+  "style.css": `body {
+  font-family: sans-serif;
+  text-align: center;
+  padding: 30px;
+}
+h1 {
+  color: royalblue;
+}`,
+  "script.js": `console.log("Hello World!");`
+};
+
+let currentFile = "index.html";
+
+function escapeHTML(s) {
+  return s.replace(/[&<>"']/g, c => ({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#39;"
+  })[c]);
+}
+
+// 簡易コード色分け
+function colorCode(code, ext) {
+  const patterns = {
+    html: /(<!--[\s\S]*?-->|<!DOCTYPE[^>]*>|<\/?[a-zA-Z][^>]*>|"[^"]*"|'[^']*')/gi,
+    css: /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|#[0-9a-fA-F]{3,8}\b|[.#]?[a-zA-Z][\w-]*(?=\s*\{)|\b[\w-]+(?=\s*:)|\b\d+(?:px|rem|em|%|vh|vw)?\b)/g,
+    js: /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|`(?:\\.|[^`])*`|\b(?:const|let|var|function|return|if|else|for|while|new|class|this|true|false|null|async|await|try|catch|throw|import|export)\b|\b\d+(?:\.\d+)?\b)/g
+  };
+
+  const pattern = patterns[ext] || patterns.js;
+  let result = "";
+  let last = 0;
+
+  for (const match of code.matchAll(pattern)) {
+    const token = match[0];
+    const index = match.index;
+
+    result += escapeHTML(code.slice(last, index));
+
+    let cls = "";
+
+    if (token.startsWith("//") || token.startsWith("/*") ||
+        token.startsWith("<!--")) {
+      cls = "comment";
+    } else if (/^["'`]/.test(token)) {
+      cls = "string";
+    } else if (/^<!DOCTYPE/i.test(token)) {
+      cls = "keyword";
+    } else if (ext === "html" && /^<\/?[a-z]/i.test(token)) {
+      cls = "tag";
+    } else if (ext === "css" && token.startsWith("#")) {
+      cls = "number";
+    } else if (ext === "css" && token.endsWith("{")) {
+      cls = "selector";
+    } else if (ext === "css" && token.endsWith(":")) {
+      cls = "property";
+    } else if (/^\d/.test(token)) {
+      cls = "number";
+    } else {
+      cls = ext === "html" ? "attribute" : "keyword";
+    }
+
+    result += `<span class="${cls}">${escapeHTML(token)}</span>`;
+    last = index + token.length;
+  }
+
+  result += escapeHTML(code.slice(last));
+  return result;
+}
+
+function extension(name) {
+  const ext = name.split(".").pop().toLowerCase();
+  return ["html","css","js"].includes(ext) ? ext : "js";
+}
+
+function refreshEditor() {
+  const code = files[currentFile] || "";
+
+  editor.value = code;
+  highlight.innerHTML = colorCode(code, extension(currentFile)) + "\n";
+
+  const count = Math.max(1, code.split("\n").length);
+  lineNumbers.textContent =
+    Array.from({length:count}, (_,i) => i+1).join("\n");
+
+  document.getElementById("editorTitle").textContent =
+    "編集中： " + currentFile;
+
+  fileSelect.value = currentFile;
+}
+
+function updateEditor() {
+  files[currentFile] = editor.value;
+  highlight.innerHTML =
+    colorCode(editor.value, extension(currentFile)) + "\n";
+
+  const count = Math.max(1, editor.value.split("\n").length);
+  lineNumbers.textContent =
+    Array.from({length:count}, (_,i) => i+1).join("\n");
+
+  statusBox.textContent = "● 編集中";
+}
+
+editor.addEventListener("input", updateEditor);
+
+editor.addEventListener("scroll", () => {
+  highlight.scrollTop = editor.scrollTop;
+  highlight.scrollLeft = editor.scrollLeft;
+  lineNumbers.scrollTop = editor.scrollTop;
+});
+
+editor.addEventListener("keydown", e => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    editor.setRangeText(
+      "  ",
+      editor.selectionStart,
+      editor.selectionEnd,
+      "end"
+    );
+    updateEditor();
+  }
+});
+
+function refreshFiles() {
+  fileSelect.innerHTML = "";
+
+  Object.keys(files).forEach(name => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    fileSelect.appendChild(option);
+  });
+
+  fileSelect.value = currentFile;
+}
+
+function switchFile(name) {
+  if (!(name in files)) return;
+  currentFile = name;
+  refreshEditor();
+}
+
+function newFile() {
+  const name = prompt("ファイル名を入力してください\n例: test.html");
+  if (!name) return;
+
+  if (!/^[a-zA-Z0-9_-]+[.]([a-zA-Z0-9]+)$/.test(name)) {
+    alert("ファイル名は test.html のように入力してください");
+    return;
+  }
+
+  if (name in files) {
+    alert("そのファイルは既に存在します");
+    return;
+  }
+
+  files[name] = "";
+  currentFile = name;
+  refreshFiles();
+  refreshEditor();
+}
+
+function deleteFile() {
+  if (Object.keys(files).length <= 1) {
+    alert("最後のファイルは削除できません");
+    return;
+  }
+
+  if (!confirm(currentFile + " を削除しますか？")) return;
+
+  delete files[currentFile];
+  currentFile = Object.keys(files)[0];
+  refreshFiles();
+  refreshEditor();
+}
+
+function saveProject() {
+  files[currentFile] = editor.value;
+
+  try {
+    localStorage.setItem("simpleEditorFiles", JSON.stringify(files));
+    localStorage.setItem("simpleEditorCurrent", currentFile);
+    statusBox.textContent = "● 保存しました";
+  } catch(e) {
+    statusBox.textContent = "保存できませんでした";
+  }
+}
+
+function downloadFile() {
+  files[currentFile] = editor.value;
+
+  const blob = new Blob(
+    [files[currentFile]],
+    {type:"text/plain;charset=utf-8"}
+  );
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+
+  a.href = url;
+  a.download = currentFile;
+  a.click();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+document.getElementById("openFile").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    files[file.name] = String(reader.result);
+    currentFile = file.name;
+    refreshFiles();
+    refreshEditor();
+    statusBox.textContent = "● ファイルを読み込みました";
+  };
+
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+function runCode() {
+  files[currentFile] = editor.value;
+
+  const html = files["index.html"] || "";
+  const css = files["style.css"] || "";
+  const js = files["script.js"] || "";
+
+  preview.srcdoc = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>${css.replace(/<\/style/gi, "<\\/style")}</style>
+    </head>
+    <body>
+      ${html}
+      <script>
+        try {
+          ${js.replace(/<\/script/gi, "<\\/script")}
+        } catch(e) {
+          const error = document.createElement("pre");
+          error.style.color = "red";
+          error.textContent = e.message;
+          document.body.appendChild(error);
+        }
+      <\/script>
+    </body>
+    </html>
+  `;
+
+  statusBox.textContent = "● 実行しました";
+}
+
+function toggleTheme() {
+  document.body.classList.toggle("light");
+
+  const light = document.body.classList.contains("light");
+
+  document.getElementById("themeBtn").textContent =
+    light ? "🌙 ダーク" : "☀ ライト";
+
+  localStorage.setItem("simpleEditorTheme",
+    light ? "light" : "dark");
+}
+
+// 起動時の読み込み
+try {
+  const saved = localStorage.getItem("simpleEditorFiles");
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (parsed && typeof parsed === "object" &&
+        !Array.isArray(parsed)) {
+      files = parsed;
+    }
+  }
+
+  const last = localStorage.getItem("simpleEditorCurrent");
+  if (last && last in files) currentFile = last;
+} catch(e) {}
+
+if (localStorage.getItem("simpleEditorTheme") === "light") {
+  document.body.classList.add("light");
+  document.getElementById("themeBtn").textContent = "🌙 ダーク";
+}
+
+refreshFiles();
+refreshEditor();
+runCode();
+</script>
+
+</body>
+</html>
